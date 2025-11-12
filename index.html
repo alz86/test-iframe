@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>IFrameCommunicator</title>
+    <meta charset="UTF-8" />
+    <script>
+      (function () {
+        "use strict";
+
+        // Enums de ambientes permitidos
+        var AllowedEnvironment = {
+          Local: "local",
+          Dev: "dev",
+          QA: "qa",
+          Prod: "prod",
+        };
+
+        // Whitelist de orígenes válidos por ambiente
+        var ENVIRONMENT_ORIGINS = {
+          local: ["http://localhost:4200", "http://localhost:5000"],
+          dev: [
+            "https://dev-portal.omsnic.com",
+            "https://dev-portal.fortress.com",
+          ],
+          qa: [
+            "https://qa-portal.omsnic.com",
+            "https://qa-portal.fortress.com",
+          ],
+          prod: ["https://portal.omsnic.com", "https://portal.fortress.com"],
+        };
+
+        // Dominios válidos de Authorize.net
+        var AUTHORIZE_NET_ORIGINS = [
+          "https://accept.authorize.net",
+          "https://test.authorize.net",
+        ];
+
+        var targetOrigins = [];
+
+        /**
+         * Obtiene el valor de un parámetro de la query string
+         */
+        function getQueryParam(param) {
+          var urlParams = new URLSearchParams(window.location.search);
+          return urlParams.get(param);
+        }
+
+        /**
+         * Inicializa el communicator
+         */
+        function init() {
+          // Obtener el ambiente del query parameter
+          var env = getQueryParam("env");
+
+          // Validar y configurar los orígenes target
+          if (env && ENVIRONMENT_ORIGINS[env]) {
+            targetOrigins = ENVIRONMENT_ORIGINS[env];
+            console.log("IFrameCommunicator initialized for environment:", env);
+            console.log("Target origins:", targetOrigins);
+          } else {
+            console.error(
+              "Invalid or missing environment parameter. Expected: ?env=" +
+                Object.keys(ENVIRONMENT_ORIGINS).join("|")
+            );
+            targetOrigins = [];
+          }
+
+          // Setup message listeners
+          if (window.addEventListener) {
+            window.addEventListener("message", receiveMessage, false);
+          } else if (window.attachEvent) {
+            // IE8 and earlier
+            window.attachEvent("onmessage", receiveMessage);
+          }
+
+          // Handle hash-based communication (legacy Authorize.net method)
+          if (window.location.hash && window.location.hash.length > 1) {
+            var hashData = window.location.hash.substring(1);
+            console.log("Processing hash data:", hashData);
+            relayMessageToParent(hashData);
+          }
+        }
+
+        /**
+         * Recibe mensajes de Authorize.net iframe
+         */
+        function receiveMessage(event) {
+          console.log(
+            "IFrameCommunicator received message from:",
+            event.origin
+          );
+          console.log("Message data:", event.data);
+
+          // IMPORTANTE: Validar que el mensaje viene de Authorize.net
+          if (AUTHORIZE_NET_ORIGINS.indexOf(event.origin) === -1) {
+            console.warn(
+              "Message rejected - not from Authorize.net:",
+              event.origin
+            );
+            return;
+          }
+
+          if (event && event.data) {
+            relayMessageToParent(event.data);
+          }
+        }
+
+        /**
+         * Sanitiza datos sensibles antes de reenviar
+         */
+        function sanitizeMessageData(data) {
+          // Logging para auditoría
+          console.log("[AUDIT] Relaying transaction data:", {
+            timestamp: new Date().toISOString(),
+            hasTransId: !!(data && data.transId),
+            responseCode: data ? data.responseCode : null,
+          });
+
+          // Si necesitas mayor seguridad, podrías:
+          // 1. Solo enviar responseCode (éxito/fallo)
+          // 2. Encriptar ciertos campos
+          // 3. Usar un identificador temporal en lugar del transId real
+
+          return data;
+        }
+
+        /**
+         * Reenvía mensajes a los orígenes permitidos del padre
+         */
+        function relayMessageToParent(messageData) {
+          if (!targetOrigins || targetOrigins.length === 0) {
+            console.error("No valid target origins configured");
+            return;
+          }
+
+          console.log("Relaying message to allowed origins");
+
+          var sanitizedData = sanitizeMessageData(messageData);
+
+          // Construir el mensaje a enviar
+          var message = {
+            source: "authorize-net-relay",
+            data: sanitizedData,
+            timestamp: Date.now(),
+          };
+
+          // Enviar a cada origen permitido
+          targetOrigins.forEach(function (origin) {
+            try {
+              // window.parent.parent porque:
+              // window = IFrameCommunicator iframe
+              // window.parent = Authorize.net iframe
+              // window.parent.parent = Tu aplicación principal
+              window.parent.parent.postMessage(message, origin);
+
+              console.log("Message sent to:", origin);
+            } catch (error) {
+              console.error("Failed to relay to " + origin + ":", error);
+            }
+          });
+        }
+
+        // Inicializar cuando el DOM esté listo
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", init);
+        } else {
+          init();
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div
+      style="text-align: center; padding: 20px; font-family: Arial, sans-serif"
+    >
+      <h1>IFrameCommunicator</h1>
+      <p style="color: #666">
+        Payment relay service - This page should not be accessed directly
+      </p>
+      <p style="font-size: 0.8em; color: #999">
+        Environment: <span id="env-display">Not configured</span>
+      </p>
+    </div>
+    <script>
+      // Mostrar el ambiente en la UI
+      var env = new URLSearchParams(window.location.search).get("env");
+      if (env) {
+        document.getElementById("env-display").textContent = env.toUpperCase();
+        document.getElementById("env-display").style.color = "#4CAF50";
+      }
+    </script>
+  </body>
+</html>
