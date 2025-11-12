@@ -154,7 +154,9 @@
               // window = IFrameCommunicator iframe
               // window.parent = Authorize.net iframe
               // window.parent.parent = Tu aplicación principal
-              window.parent.parent.postMessage(message, origin);
+              window.parent?.postMessage(message, origin);
+              window.parent?.parent?.postMessage(message, origin);
+              window.parent?.parent?.parent?.postMessage(message, origin);
 
               console.log("Message sent to:", origin);
             } catch (error) {
