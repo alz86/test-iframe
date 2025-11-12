@@ -33,7 +33,7 @@
         var AUTHORIZE_NET_ORIGINS = [
           "https://accept.authorize.net",
           "https://test.authorize.net",
-          "https://alz86.github.io"
+          "https://alz86.github.io",
         ];
 
         var targetOrigins = [];
@@ -144,6 +144,8 @@
             data: sanitizedData,
             timestamp: Date.now(),
           };
+
+          console.log("window:", window);
 
           // Enviar a cada origen permitido
           targetOrigins.forEach(function (origin) {
